@@ -11,7 +11,7 @@ async def is_admin(chat_id, user_id):
     return any(admin.user.id == user_id for admin in admins)
 
 
-# وقتی تازه وارد میشه → کامل بسته میشه
+# وقتی تازه وارد میشه → نصفه محدود میشه (دکمه کار می‌کنه)
 @dp.message_handler(content_types=["new_chat_members"])
 async def welcome(message: types.Message):
     new_user = message.new_chat_members[0]
@@ -20,48 +20,43 @@ async def welcome(message: types.Message):
     if await is_admin(chat_id, new_user.id):
         return
 
+    # نصفه محدود (فقط پیام نمی‌تونه بده)
     await bot.restrict_chat_member(
         chat_id,
         new_user.id,
-        types.ChatPermissions(can_send_messages=False)
+        types.ChatPermissions(
+            can_send_messages=False,      # پیام ممنوع
+            can_send_media_messages=True, # دکمه کار می‌کنه
+            can_send_other_messages=True,
+            can_add_web_page_previews=True
+        )
     )
+
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("من اد کردم ✔️", callback_data=f"unlock_{new_user.id}"))
 
     await message.reply(
         f"👋 خوش اومدی {new_user.first_name}\n\n"
-        f"برای فعال شدن باید **۱ نفر رو اد کنی**."
+        f"برای فعال شدن باید **۱ نفر رو اد کنی**.\n"
+        f"بعد از اد کردن روی دکمه زیر بزن:",
+        reply_markup=keyboard
     )
 
 
-# تشخیص اد کردن واقعی (تنها روش درست)
-@dp.chat_member_handler()
-async def detect_invite(update: types.ChatMemberUpdated):
-    chat_id = update.chat.id
+# دکمه آزادسازی
+@dp.callback_query_handler(lambda c: c.data.startswith("unlock_"))
+async def unlock(callback: types.CallbackQuery):
+    user_id = int(callback.data.split("_")[1])
+    chat_id = callback.message.chat.id
 
-    # کسی که اد شده
-    new_user = update.new_chat_member.user
-
-    # کسی که اد کرده
-    inviter = update.from_user.id
-
-    # اگر خودش وارد شده → اد نیست
-    if inviter == new_user.id:
-        return
-
-    # اگر ادمین بود → کاری نکن
-    if await is_admin(chat_id, inviter):
-        return
-
-    # آزاد کردن اد کننده
+    # آزاد کردن کامل
     await bot.restrict_chat_member(
         chat_id,
-        inviter,
+        user_id,
         types.ChatPermissions(can_send_messages=True)
     )
 
-    await bot.send_message(
-        chat_id,
-        f"✔️ {update.from_user.first_name} یک نفر رو اد کرد و محدودیتش برداشته شد!"
-    )
+    await callback.message.edit_text("✔️ محدودیتت برداشته شد! ❤️")
 
 
 # جلوگیری از پیام دادن افراد محدود
