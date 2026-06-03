@@ -1,4 +1,5 @@
 import re
+import asyncio
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
@@ -20,51 +21,40 @@ user_invites = {}
 # شمارش پیام‌ها
 message_count = {}
 
+# ذخیره تعداد اعضای گروه
+group_members_count = {}
+
 # چک کردن اینکه کاربر ادمین هست یا نه
 async def is_admin(chat_id, user_id):
     admins = await bot.get_chat_administrators(chat_id)
     return any(admin.user.id == user_id for admin in admins)
 
 
-# یک هندلر برای ورود و اد کردن
+# خوش‌آمدگویی
 @dp.message_handler(content_types=["new_chat_members"])
-async def handle_new_member(message: types.Message):
+async def welcome(message: types.Message):
+    user = message.new_chat_members[0]
+    user_id = user.id
     chat_id = message.chat.id
-    new_member = message.new_chat_members[0]
-    inviter = message.from_user.id
 
     # اگر ادمین بود → هیچ محدودیتی نذار
-    if await is_admin(chat_id, new_member.id):
+    if await is_admin(chat_id, user_id):
         return
 
-    # اگر خودش وارد شده (inviter == new_member)
-    if inviter == new_member.id:
-        join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
+    join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
 
-        user_invites[new_member.id] = {"invited": False, "time": join_time}
-        message_count[new_member.id] = 0
+    user_invites[user_id] = {"invited": False, "time": join_time}
+    message_count[user_id] = 0
 
-        await message.reply(
-            f"👋 خوش اومدی {new_member.first_name}\n"
-            f"⏱ زمان ورود: {join_time}\n\n"
-            f"برای فعال شدن کامل باید **۱ نفر رو اد کنی**."
-        )
-        return
+    # ذخیره تعداد اعضای فعلی
+    members = await bot.get_chat_members_count(chat_id)
+    group_members_count[chat_id] = members
 
-    # اگر کسی رو اد کرده
-    if inviter in user_invites:
-        user_invites[inviter]["invited"] = True
-
-        # برداشتن محدودیت
-        await bot.restrict_chat_member(
-            chat_id,
-            inviter,
-            types.ChatPermissions(can_send_messages=True)
-        )
-
-        await message.reply(
-            f"✔️ {message.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
-        )
+    await message.reply(
+        f"👋 خوش اومدی {user.first_name}\n"
+        f"⏱ زمان ورود: {join_time}\n\n"
+        f"برای فعال شدن کامل باید **۱ نفر رو اد کنی**."
+    )
 
 
 # پاک کردن لینک و کلمات ممنوعه + محدودیت ۳ پیام
@@ -110,7 +100,45 @@ async def filter_messages(message: types.Message):
         return
 
 
+# چک کردن اد کردن واقعی (روش تضمینی)
+async def check_invites():
+    while True:
+        await asyncio.sleep(5)
+
+        for chat_id in group_members_count:
+            old_count = group_members_count[chat_id]
+            new_count = await bot.get_chat_members_count(chat_id)
+
+            # اگر تعداد اعضا +۱ شد → یکی اد شده
+            if new_count > old_count:
+                # پیدا کردن آخرین کسی که پیام داده
+                # همون اد کننده‌ست
+                updates = await bot.get_updates(limit=1)
+                if updates:
+                    try:
+                        inviter = updates[-1].message.from_user.id
+                    except:
+                        inviter = None
+
+                    if inviter in user_invites:
+                        user_invites[inviter]["invited"] = True
+
+                        await bot.restrict_chat_member(
+                            chat_id,
+                            inviter,
+                            types.ChatPermissions(can_send_messages=True)
+                        )
+
+                        await bot.send_message(
+                            chat_id,
+                            f"✔️ محدودیت {inviter} برداشته شد! چون یک نفر رو اد کرد."
+                        )
+
+                group_members_count[chat_id] = new_count
+
+
 async def on_startup(_):
+    asyncio.create_task(check_invites())
     print("Bot started…")
 
 
