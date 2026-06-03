@@ -24,10 +24,7 @@ message_count = {}
 # چک کردن اینکه کاربر ادمین هست یا نه
 async def is_admin(chat_id, user_id):
     admins = await bot.get_chat_administrators(chat_id)
-    for admin in admins:
-        if admin.user.id == user_id:
-            return True
-    return False
+    return any(admin.user.id == user_id for admin in admins)
 
 
 # خوش‌آمدگویی
@@ -36,6 +33,10 @@ async def welcome(message: types.Message):
     user = message.new_chat_members[0]
     user_id = user.id
     chat_id = message.chat.id
+
+    # اگر ادمین بود → هیچ محدودیتی نذار
+    if await is_admin(chat_id, user_id):
+        return
 
     join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
 
@@ -49,16 +50,22 @@ async def welcome(message: types.Message):
     )
 
 
-# تشخیص اد کردن عضو جدید
-@dp.message_handler(content_types=["new_chat_members"])
-async def detect_invite(message: types.Message):
-    inviter = message.from_user.id
-    chat_id = message.chat.id
+# تشخیص اد کردن واقعی (ChatMemberUpdated)
+@dp.chat_member_handler()
+async def detect_invite(update: types.ChatMemberUpdated):
+    chat_id = update.chat.id
+
+    # کسی که اد شده
+    new_member = update.new_chat_member.user
+
+    # کسی که اد کرده
+    inviter = update.from_user.id
 
     # اگر ادمین بود → کاری نکن
     if await is_admin(chat_id, inviter):
         return
 
+    # اگر این کاربر قبلاً محدود شده بود
     if inviter in user_invites:
         user_invites[inviter]["invited"] = True
 
@@ -69,8 +76,9 @@ async def detect_invite(message: types.Message):
             types.ChatPermissions(can_send_messages=True)
         )
 
-        await message.reply(
-            f"✔️ {message.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
+        await bot.send_message(
+            chat_id,
+            f"✔️ {update.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
         )
 
 
