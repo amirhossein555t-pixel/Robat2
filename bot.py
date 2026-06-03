@@ -18,6 +18,9 @@ LINK_REGEX = r"(https?://|t\.me/|@[\w_]+|bit\.ly|tinyurl)"
 # ذخیره وضعیت اد کردن
 user_invites = {}
 
+# شمارش پیام‌ها
+message_count = {}
+
 # خوش‌آمدگویی
 @dp.message_handler(content_types=["new_chat_members"])
 async def welcome(message: types.Message):
@@ -28,6 +31,7 @@ async def welcome(message: types.Message):
     join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
 
     user_invites[user_id] = {"invited": False, "time": join_time}
+    message_count[user_id] = 0
 
     await message.reply(
         f"👋 خوش اومدی {user.first_name}\n"
@@ -48,9 +52,10 @@ async def detect_invite(message: types.Message):
         )
 
 
-# پاک کردن لینک و کلمات ممنوعه
+# پاک کردن لینک و کلمات ممنوعه + محدودیت ۳ پیام
 @dp.message_handler()
 async def filter_messages(message: types.Message):
+    user_id = message.from_user.id
     text = message.text.lower() if message.text else ""
 
     # پاک کردن لینک
@@ -64,6 +69,26 @@ async def filter_messages(message: types.Message):
             await message.delete()
             return
 
+    # شمارش پیام‌ها
+    if user_id not in message_count:
+        message_count[user_id] = 0
+
+    message_count[user_id] += 1
+
+    # اگر ۳ پیام داد → محدودیت
+    if message_count[user_id] == 3:
+        await message.reply(
+            "🚫 **محدود شدی!**\n\n"
+            "📌 برای ادامه پیام دادن باید **۱ نفر رو به گروه اضافه کنی**.\n"
+            "بعد از اد کردن، ربات خودش محدودیت رو برمی‌داره.\n\n"
+            "⚠️ بدون اد کردن، پیام‌هات ارسال نمی‌شن."
+        )
+
+    # اگر بیشتر از ۳ پیام بده → پاک کن
+    if message_count[user_id] > 3:
+        await message.delete()
+        return
+
 
 # حالت B → هر ۵ دقیقه چک کنه کی اد نکرده
 async def check_invites():
@@ -71,7 +96,7 @@ async def check_invites():
         await asyncio.sleep(300)
         for user_id, data in list(user_invites.items()):
             if not data["invited"]:
-                pass  # فعلاً کاری نمی‌کنیم، فقط حالت B فعال است
+                pass
 
 
 async def on_startup(_):
