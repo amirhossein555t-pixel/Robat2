@@ -26,49 +26,32 @@ async def is_admin(chat_id, user_id):
     return any(admin.user.id == user_id for admin in admins)
 
 
-# خوش‌آمدگویی
+# یک هندلر برای ورود و اد کردن
 @dp.message_handler(content_types=["new_chat_members"])
-async def welcome(message: types.Message):
-    user = message.new_chat_members[0]
-    user_id = user.id
+async def handle_new_member(message: types.Message):
     chat_id = message.chat.id
-
-    # اگر ادمین بود → هیچ محدودیتی نذار
-    if await is_admin(chat_id, user_id):
-        return
-
-    join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
-
-    user_invites[user_id] = {"invited": False, "time": join_time}
-    message_count[user_id] = 0
-
-    await message.reply(
-        f"👋 خوش اومدی {user.first_name}\n"
-        f"⏱ زمان ورود: {join_time}\n\n"
-        f"برای فعال شدن کامل باید **۱ نفر رو اد کنی**."
-    )
-
-
-# تشخیص اد کردن واقعی
-@dp.message_handler(content_types=["new_chat_members"])
-async def detect_invite(message: types.Message):
-    chat_id = message.chat.id
-
-    # کسی که اد شده
     new_member = message.new_chat_members[0]
-
-    # کسی که اد کرده
     inviter = message.from_user.id
 
-    # اگر خود کاربر وارد شده → اد نیست
+    # اگر ادمین بود → هیچ محدودیتی نذار
+    if await is_admin(chat_id, new_member.id):
+        return
+
+    # اگر خودش وارد شده (inviter == new_member)
     if inviter == new_member.id:
+        join_time = datetime.now().strftime("%Y-%m-%d | %H:%M:%S")
+
+        user_invites[new_member.id] = {"invited": False, "time": join_time}
+        message_count[new_member.id] = 0
+
+        await message.reply(
+            f"👋 خوش اومدی {new_member.first_name}\n"
+            f"⏱ زمان ورود: {join_time}\n\n"
+            f"برای فعال شدن کامل باید **۱ نفر رو اد کنی**."
+        )
         return
 
-    # اگر ادمین بود → کاری نکن
-    if await is_admin(chat_id, inviter):
-        return
-
-    # اگر این کاربر محدود شده بود
+    # اگر کسی رو اد کرده
     if inviter in user_invites:
         user_invites[inviter]["invited"] = True
 
