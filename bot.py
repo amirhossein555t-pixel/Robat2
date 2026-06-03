@@ -1,5 +1,4 @@
 import re
-import asyncio
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
@@ -50,22 +49,26 @@ async def welcome(message: types.Message):
     )
 
 
-# تشخیص اد کردن واقعی (ChatMemberUpdated)
-@dp.chat_member_handler()
-async def detect_invite(update: types.ChatMemberUpdated):
-    chat_id = update.chat.id
+# تشخیص اد کردن واقعی
+@dp.message_handler(content_types=["new_chat_members"])
+async def detect_invite(message: types.Message):
+    chat_id = message.chat.id
 
     # کسی که اد شده
-    new_member = update.new_chat_member.user
+    new_member = message.new_chat_members[0]
 
     # کسی که اد کرده
-    inviter = update.from_user.id
+    inviter = message.from_user.id
+
+    # اگر خود کاربر وارد شده → اد نیست
+    if inviter == new_member.id:
+        return
 
     # اگر ادمین بود → کاری نکن
     if await is_admin(chat_id, inviter):
         return
 
-    # اگر این کاربر قبلاً محدود شده بود
+    # اگر این کاربر محدود شده بود
     if inviter in user_invites:
         user_invites[inviter]["invited"] = True
 
@@ -76,9 +79,8 @@ async def detect_invite(update: types.ChatMemberUpdated):
             types.ChatPermissions(can_send_messages=True)
         )
 
-        await bot.send_message(
-            chat_id,
-            f"✔️ {update.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
+        await message.reply(
+            f"✔️ {message.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
         )
 
 
