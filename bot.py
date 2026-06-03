@@ -21,6 +21,15 @@ user_invites = {}
 # شمارش پیام‌ها
 message_count = {}
 
+# چک کردن اینکه کاربر ادمین هست یا نه
+async def is_admin(chat_id, user_id):
+    admins = await bot.get_chat_administrators(chat_id)
+    for admin in admins:
+        if admin.user.id == user_id:
+            return True
+    return False
+
+
 # خوش‌آمدگویی
 @dp.message_handler(content_types=["new_chat_members"])
 async def welcome(message: types.Message):
@@ -44,9 +53,22 @@ async def welcome(message: types.Message):
 @dp.message_handler(content_types=["new_chat_members"])
 async def detect_invite(message: types.Message):
     inviter = message.from_user.id
+    chat_id = message.chat.id
+
+    # اگر ادمین بود → کاری نکن
+    if await is_admin(chat_id, inviter):
+        return
 
     if inviter in user_invites:
         user_invites[inviter]["invited"] = True
+
+        # برداشتن محدودیت
+        await bot.restrict_chat_member(
+            chat_id,
+            inviter,
+            types.ChatPermissions(can_send_messages=True)
+        )
+
         await message.reply(
             f"✔️ {message.from_user.first_name} یک نفر اد کرد و محدودیتش برداشته شد!"
         )
@@ -56,7 +78,12 @@ async def detect_invite(message: types.Message):
 @dp.message_handler()
 async def filter_messages(message: types.Message):
     user_id = message.from_user.id
+    chat_id = message.chat.id
     text = message.text.lower() if message.text else ""
+
+    # اگر ادمین بود → هیچ محدودیتی اعمال نشه
+    if await is_admin(chat_id, user_id):
+        return
 
     # پاک کردن لینک
     if re.search(LINK_REGEX, text):
@@ -75,7 +102,7 @@ async def filter_messages(message: types.Message):
 
     message_count[user_id] += 1
 
-    # اگر ۳ پیام داد → محدودیت
+    # اگر ۳ پیام داد → هشدار بزرگ
     if message_count[user_id] == 3:
         await message.reply(
             "🚫 **محدود شدی!**\n\n"
@@ -90,17 +117,7 @@ async def filter_messages(message: types.Message):
         return
 
 
-# حالت B → هر ۵ دقیقه چک کنه کی اد نکرده
-async def check_invites():
-    while True:
-        await asyncio.sleep(300)
-        for user_id, data in list(user_invites.items()):
-            if not data["invited"]:
-                pass
-
-
 async def on_startup(_):
-    asyncio.create_task(check_invites())
     print("Bot started…")
 
 
